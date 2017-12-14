@@ -59,9 +59,7 @@ tasks:
             filename_token: '___NAMESPACE___'
     dx_convert_to:
         description: Converts src directory metadata format into sfdx format under force-app
-        class_path: cumulusci.tasks.sfdx.SFDXBaseTask
-        options:
-            command: 'force:mdapi:convert -r src'
+        class_path: cumulusci.tasks.sfdx.SFDXConvertTo
     dx_convert_from:
         description: Converts force-app directory in sfdx format into metadata format under src
         class_path: cumulusci.tasks.sfdx.SFDXBaseTask

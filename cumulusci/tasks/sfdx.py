@@ -22,6 +22,8 @@ SFDX_CLI = 'sfdx'
 class SFDXBaseTask(Command):
     """ Call the sfdx cli with params and no org """
 
+    command = 'force --help'
+
     task_options = {
         'command': {
             'description': 'The full command to run with the sfdx cli.',
@@ -38,7 +40,7 @@ class SFDXBaseTask(Command):
 
     def _get_command(self):
         command = '{SFDX_CLI} {command}'.format(
-            command=self.options['command'],
+            command=self.options.get('command', self.command),
             SFDX_CLI=SFDX_CLI
         )
         return command
@@ -61,7 +63,8 @@ class SFDXOrgTask(SFDXBaseTask):
 
         self.logger.info('Running command:  {}'.format(self.options['command']))
 
-    def _add_username(self, command):
+    def _get_command(self):
+        command = super(SFDXOrgTask, self)._get_command()
         # For scratch orgs, just pass the username in the command line
         if isinstance(self.org_config, ScratchOrgConfig):
             command += ' -u {username}'.format(
@@ -77,8 +80,7 @@ class SFDXOrgTask(SFDXBaseTask):
             env['SFDX_USERNAME'] = self.org_config.access_token
         return env
 
-class SFDXJsonTask(SFDXOrgTask):
-    command = 'force:mdapi:deploy --json'
+class SFDXJsonTask(SFDXBaseTask):
 
     def _process_output(self, line):
         try:
@@ -88,20 +90,9 @@ class SFDXJsonTask(SFDXOrgTask):
         
         self._process_data(data)
 
-    def _init_options(self, kwargs):
-        kwargs['command'] = self._get_command()
-        super(SFDXJsonTask, self)._init_options(kwargs)
-
-    def _get_command(self):
-        command = '{SFDX_CLI} {command}'.format(
-            command=self.command,
-            SFDX_CLI=SFDX_CLI,
-        )
-        command = self._add_username(command)
-        return command
-
     def _process_data(self, data):
         self.logger.info('JSON = {}'.format(data))
+
 
 class SFDXJsonPollingTask(SFDXJsonTask):
 
@@ -152,9 +143,33 @@ class SFDXJsonPollingTask(SFDXJsonTask):
         raise NotImplementedError(
             'Subclassess should provide an implementation'
         )
+
+class SFDXConvertTo(SFDXJsonTask):
+    """ Use sfdx force:source:convert to convert from MDAPI to sfdx format """
+
+    command = 'force:mdapi:convert'
+    
+    task_options = {
+        'src': {
+            'description': 'The path of the metadata source to be converted.  Default: src',
+        },
+        'path': {
+            'description': 'The path to write the converted metadata to.  Default: force-app',
+        }
+    }
+    
+    def _init_options(self, kwargs):
+        self.options.set_default('src', 'src')
+        self.options.set_default('path', 'force-app')
+        super(SFDXConvertTo, self)._init_options(kwargs)
+
+    def _get_command(self):
+        command = super(SFDXConvertTo, self)._get_command()
+        command = '{} -r {} -d {}'.format(command, self.options['src'], self.options['path'])
+
     
 
-class SFDXDeploy(SFDXJsonPollingTask):
+class SFDXDeploy(SFDXJsonPollingTask, SFDXOrgTask):
     """ Use sfdx force:mdapi:deploy to deploy a local directory of metadata """
 
     task_options = {
