@@ -33,6 +33,7 @@ class BaseTask(object):
     ):
         self.project_config = project_config
         self.task_config = task_config
+        self.options = {}
         self.org_config = org_config
         self.poll_count = 0
         self.poll_interval_level = 0
@@ -65,9 +66,8 @@ class BaseTask(object):
 
     def _init_options(self, kwargs):
         """ Initializes self.options """
-        self.options = self.task_config.options
-        if self.options is None:
-            self.options = {}
+        if self.task_config.options:
+            self.options.update(self.task_config.options)
         if kwargs:
             self.options.update(kwargs)
 
