@@ -62,9 +62,7 @@ tasks:
         class_path: cumulusci.tasks.sfdx.SFDXConvertTo
     dx_convert_from:
         description: Converts force-app directory in sfdx format into metadata format under src
-        class_path: cumulusci.tasks.sfdx.SFDXBaseTask
-        options:
-            command: 'force:mdapi:convert -r force-app -d src'
+        class_path: cumulusci.tasks.sfdx.SFDXConvertFrom
     dx_pull:
         description: Uses sfdx to pull from a scratch org into the force-app directory
         class_path: cumulusci.tasks.sfdx.SFDXOrgTask

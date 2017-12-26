@@ -14,6 +14,7 @@ how the CLI formats args opts commands etc.
 import json
 
 from cumulusci.core.config import ScratchOrgConfig
+from cumulusci.core.exceptions import CommandException
 from cumulusci.tasks.command import Command
 
 SFDX_CLI = 'sfdx'
@@ -84,14 +85,15 @@ class SFDXJsonTask(SFDXBaseTask):
 
     def _process_output(self, line):
         try:
-            data = json.loads(line)
+            self.return_values['data'] = json.loads(line)
         except:
             self.logger.error('Failed to parse json from line: {}'.format(line))
+            raise
         
-        self._process_data(data)
+        self._process_data()
 
-    def _process_data(self, data):
-        self.logger.info('JSON = {}'.format(data))
+    def _process_data(self):
+        self.logger.info('JSON = {}'.format(self.return_values['data']))
 
 
 class SFDXJsonPollingTask(SFDXJsonTask):
@@ -108,20 +110,20 @@ class SFDXJsonPollingTask(SFDXJsonTask):
         super(SFDXJsonPollingTask, self)._process_output(line)
 
         if not started:
-            self._process_data(data)
+            self._process_data()
         else:
-            self._process_poll_data(data)
+            self._process_poll_data()
 
-    def _process_data(self, data):
+    def _process_data(self):
         if self.job_id:
-            return self._process_poll_data(data) 
+            return self._process_poll_data() 
 
-        self.job_id = data['id']
+        self.job_id = self.return_values['data']['id']
         self._poll()
 
-    def _process_poll_data(self, data):
-        self.logger.info(data)
-        if self._check_poll_done(data):
+    def _process_poll_data(self):
+        self.logger.info(self.return_values['data'])
+        if self._check_poll_done(self.return_values['data']):
             self.poll_complete = True
 
     def _poll_action(self):
@@ -133,8 +135,8 @@ class SFDXJsonPollingTask(SFDXJsonTask):
         )
         
 
-    def _check_poll_done(self, data):
-        return data.get('done', True)
+    def _check_poll_done(self):
+        return self.return_values['data'].get('done', True)
 
     def _process_poll_output(self, line):
         pass
@@ -144,8 +146,43 @@ class SFDXJsonPollingTask(SFDXJsonTask):
             'Subclassess should provide an implementation'
         )
 
-class SFDXConvertTo(SFDXJsonTask):
+class SFDXConvertFrom(SFDXJsonTask):
     """ Use sfdx force:source:convert to convert from MDAPI to sfdx format """
+
+    command = 'force:source:convert'
+    
+    task_options = {
+        'src': {
+            'description': 'The path of the Salesforce DX format source to be converted.  Default: force-app',
+        },
+        'dest': {
+            'description': 'The path to write the converted metadata to.  Default: src',
+        }
+    }
+    
+    def _init_options(self, kwargs):
+        self.options.setdefault('src', 'force-app')
+        self.options.setdefault('dest', 'src')
+        self.options['command'] = self.command
+        super(SFDXConvertFrom, self)._init_options(kwargs)
+
+    def _get_command(self):
+        command = super(SFDXConvertFrom, self)._get_command()
+        command = '{} -r {} -d {} --json'.format(command, self.options['src'], self.options['dest'])
+        return command
+
+    def _process_data(self):
+        status = self.return_values['data'].get('status')
+        if status == 0:
+            self.logger.info('Successfully converted DX format from {src} to {dest}'.format(**self.options))
+
+    def _handle_returncode(self, returncode, stderr):
+        if returncode:
+            self.logger.error(self.return_values['data']['message'])
+            raise CommandException(self.return_values['data']['message'])
+
+class SFDXConvertTo(SFDXJsonTask):
+    """ Use sfdx force:mdapi:convert to convert from MDAPI to sfdx format """
 
     command = 'force:mdapi:convert'
     
@@ -153,21 +190,25 @@ class SFDXConvertTo(SFDXJsonTask):
         'src': {
             'description': 'The path of the metadata source to be converted.  Default: src',
         },
-        'path': {
+        'dest': {
             'description': 'The path to write the converted metadata to.  Default: force-app',
         }
     }
     
     def _init_options(self, kwargs):
-        self.options.set_default('src', 'src')
-        self.options.set_default('path', 'force-app')
+        self.options.setdefault('src', 'src')
+        self.options.setdefault('dest', 'force-app')
+        self.options['command'] = self.command
         super(SFDXConvertTo, self)._init_options(kwargs)
 
     def _get_command(self):
         command = super(SFDXConvertTo, self)._get_command()
-        command = '{} -r {} -d {}'.format(command, self.options['src'], self.options['path'])
+        command = '{} -r {} -d {} --json'.format(command, self.options['src'], self.options['dest'])
+        return command
 
-    
+    def _process_data(self):
+        if self.return_values['data'].get('status') == 0:
+            self.logger.info('Successfully converted metadata from {src} to {dest}'.format(**self.options)) 
 
 class SFDXDeploy(SFDXJsonPollingTask, SFDXOrgTask):
     """ Use sfdx force:mdapi:deploy to deploy a local directory of metadata """
